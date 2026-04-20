@@ -3,31 +3,44 @@ import logging
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, MenuButtonWebApp
 from telegram.ext import Application, CommandHandler, ContextTypes
+from motor.motor_asyncio import AsyncIOMotorClient
 
-# .env ফাইল থেকে টোকেন লোড করা
+# .env ফাইল থেকে ডাটা লোড করা
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-# তোর গেমের লিঙ্ক (রেন্ডারে হোস্ট করার পর যেটা পাবি)
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-app.onrender.com") 
+MONGO_URI = os.getenv("MONGO_URI")
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-app.onrender.com")
 
-# তোর অ্যাডমিন আইডি
+# তোর অ্যাডমিন আইডি (এখান থেকেই শুধু ব্রডকাস্ট কাজ করবে)
 ADMIN_ID = 7657544184 
+
+# ডাটাবেস সেটআপ
+client = AsyncIOMotorClient(MONGO_URI)
+db = client['aura_coin_db']
+users_collection = db['users']
 
 # লগিং সেটআপ
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
 # --- /start কমান্ড হ্যান্ডলার ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    user_name = user.first_name
+    chat_id = update.effective_chat.id
+    
+    # ১. ইউজারকে ডাটাবেসে সেভ করা (ব্রডকাস্টের জন্য)
+    await users_collection.update_one(
+        {"user_id": user.id},
+        {"$set": {"username": user.username, "first_name": user.first_name}},
+        upsert=True
+    )
 
-    # ১. বাম পাশের নিচে 'Play' মেনু বাটন সেট করা (যাতে ইউজার সবসময় গেমটি পায়)
+    # ২. বাম পাশের নিচে 'Play' মেনু বাটন সেট করা
     try:
         await context.bot.set_chat_menu_button(
-            chat_id=update.effective_chat.id,
+            chat_id=chat_id,
             menu_button=MenuButtonWebApp(
                 text="Play $AURA ✨",
                 web_app=WebAppInfo(url=WEBAPP_URL)
@@ -36,24 +49,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Menu Button Error: {e}")
 
-    # ২. প্রিমিয়াম ওয়েলকাম মেসেজ
+    # ৩. প্রিমিয়াম ওয়েলকাম মেসেজ
     welcome_text = (
-        f"✨ *Welcome to Aura Coin, {user_name}!* ✨\n"
+        f"✨ *Welcome to Aura Coin, {user.first_name}!* ✨\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "🚀 *The Fastest Tap-to-Earn Game*\n\n"
+        "🚀 *The Fastest Tap-to-Earn Game on Telegram*\n\n"
         "Tap the Aura Coin to earn tokens, complete\n"
-        "tasks, and invite friends to boost your\n"
-        "Aura Level!\n\n"
+        "special tasks, and invite your friends to\n"
+        "boost your Aura Level! 📈\n\n"
         "⚡ *0.001s Response Speed*\n"
         "🛡️ *Anti-Cheat System Active*\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
-        "Start mining now and earn your $AURA!"
+        "Start mining now and claim your $AURA!"
     )
 
-    # ৩. ইনলাইন বাটন (Play Button)
+    # ৪. ইনলাইন বাটন
     keyboard = [
         [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/your_channel")], # তোর চ্যানেল লিঙ্ক দিস
+        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/SamirOfficial_News")], # তোর চ্যানেল লিঙ্ক দিস
         [InlineKeyboardButton("👥 Invite Friends", url=f"https://t.me/share/url?url=https://t.me/{(await context.bot.get_me()).username}?start={user.id}&text=Join%20Aura%20Coin%20and%20mine%20together!")]
     ]
 
@@ -63,12 +76,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# --- অ্যাডমিন ব্রডকাস্ট কমান্ড (ঐচ্ছিক) ---
+# --- অ্যাডমিন ব্রডকাস্ট কমান্ড (সব ইউজারকে মেসেজ পাঠাতে) ---
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ You are not authorized!")
         return
-    # তোর আগের ব্রডকাস্ট লজিক এখানে অ্যাড করতে পারিস পরে
 
+    if not context.args:
+        await update.message.reply_text("💡 Usage: /broadcast [Your Message]")
+        return
+
+    msg_text = " ".join(context.args)
+    users = await users_collection.find().to_list(length=None)
+    
+    count = 0
+    await update.message.reply_text(f"🚀 Broadcasting message to {len(users)} users...")
+
+    for user in users:
+        try:
+            await context.bot.send_message(chat_id=user['user_id'], text=msg_text)
+            count += 1
+        except Exception:
+            pass # ইউজার যদি বট ব্লক করে রাখে
+
+    await update.message.reply_text(f"✅ Successfully sent to {count} users.")
+
+# --- মেইন ফাংশন ---
 def main():
     # বট অ্যাপ্লিকেশন তৈরি
     app = Application.builder().token(TOKEN).build()
@@ -78,6 +111,8 @@ def main():
     app.add_handler(CommandHandler("broadcast", broadcast))
 
     print("--- Aura Coin Bot is Live! ---")
+    
+    # পোলিং শুরু করা
     app.run_polling(drop_pending_updates=True)
 
 if __name__ == '__main__':
