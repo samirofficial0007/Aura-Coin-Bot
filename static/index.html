@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aura Coin - Mining App</title>
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;700;900&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+    <div class="header-stats">
+        <p class="label">AURA BALANCE</p>
+        <div id="score">0</div>
+    </div>
+
+    <div class="coin-container">
+        <div id="tapZone" class="coin-btn">
+            <div class="coin-inner">
+                <span>✨</span> 
+            </div>
+        </div>
+    </div>
+
+    <div class="footer-area">
+        
+        <div class="energy-info">
+            <span>⚡ ENERGY</span>
+            <span id="energyText">1000 / 1000</span>
+        </div>
+        
+        <div class="progress-container">
+            <div id="energyBar"></div>
+        </div>
+
+        <nav class="nav-tabs">
+            <button class="nav-item active">
+                <i>⛏️</i>
+                <span>Mining</span>
+            </button>
+            <button class="nav-item">
+                <i>📋</i>
+                <span>Tasks</span>
+            </button>
+            <button class="nav-item">
+                <i>👥</i>
+                <span>Friends</span>
+            </button>
+            <button class="nav-item">
+                <i>🏆</i>
+                <span>Stats</span>
+            </button>
+        </nav>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
