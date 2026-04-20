@@ -1,75 +1,86 @@
 import os
-from fastapi import FastAPI, Request, HTTPException
+import asyncio
+import logging
+from fastapi import FastAPI, Request, BackgroundTasks
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+from dotenv import load_dotenv
+
+# আমাদের অন্য ফাইলগুলো থেকে ফাংশন ইমপোর্ট করা
 from database import get_user_data, update_user_balance
-import time
+from bot import main as start_bot_logic
+
+# .env ফাইল লোড করা
+load_dotenv()
 
 app = FastAPI()
 
-# CORS সেটআপ (যাতে অন্য ডোমেইন থেকেও এপিআই কল করা যায়)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# ১. Static ফাইল মাউন্ট করা (HTML, CSS, JS ফাইলগুলো এখান থেকে লোড হবে)
+# --- 📂 Static Files Setup ---
+# এটি তোর HTML, CSS এবং JS ফাইলগুলোকে সার্ভারে এক্সেসযোগ্য করবে
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# ২. গেমের মেইন পেজ লোড করা
-@app.get("/")
-async def read_index():
-    return FileResponse('static/index.html')
+# লগিং সেটআপ
+logging.basicConfig(level=logging.INFO)
 
-# ৩. ডাটা মডেল (ইউজার যখন সিঙ্ক করবে তখন এই ফরম্যাটে ডাটা আসবে)
+# --- 🛠 ডাটা মডেল (API এর জন্য) ---
 class SyncData(BaseModel):
     user_id: int
     taps: int
     energy: int
 
-# ৪. এপিআই: ইউজারের ডাটা লোড করা
+# --- 🌐 Routes (Frontend-এর জন্য) ---
+
+@app.get("/")
+async def serve_home():
+    """ইউজার যখন লিঙ্কে ঢুকবে তখন index.html ফাইলটি দেখাবে।"""
+    return FileResponse("static/index.html")
+
 @app.get("/api/user/{user_id}")
 async def fetch_user(user_id: int):
+    """ইউজার যখন গেম ওপেন করবে তখন তার ব্যালেন্স আর এনার্জি ডাটাবেস থেকে আনবে।"""
     try:
         user_data = await get_user_data(user_id)
-        # ডাটাবেসের অবজেক্ট আইডি সরিয়ে শুধু প্রয়োজনীয় ডাটা পাঠানো
+        # ডাটাবেস অবজেক্টকে JSON ফরম্যাটে পাঠানো
         return {
-            "balance": user_data["balance"],
-            "energy": user_data["energy"],
-            "max_energy": user_data["max_energy"]
+            "status": "success",
+            "balance": user_data['balance'],
+            "energy": user_data['energy'],
+            "max_energy": user_data['max_energy']
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-# ৫. এপিআই: আল্ট্রা-ফাস্ট সিঙ্ক (ডাটা সেভ করা)
-# এখানে সার্ভার সাইড এন্টি-চিট লজিক আছে
-last_sync_time = {}
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
 @app.post("/api/sync")
 async def sync_data(data: SyncData):
-    now = time.time()
-    user_id = data.user_id
-    
-    # --- 🛡️ SERVER-SIDE ANTI-CHEAT ---
-    if user_id in last_sync_time:
-        time_diff = now - last_sync_time[user_id]
-        # যদি ১ সেকেন্ডে ৩০টার বেশি ট্যাপ আসে, তবে ওটা চিটিং
-        max_allowed_taps = time_diff * 30 
-        if data.taps > max_allowed_taps + 5: # ৫ ট্যাপ গ্রেস পিরিয়ড
-            return {"status": "error", "message": "Too many taps! Slow down."}
-    
-    last_sync_time[user_id] = now
-
+    """ইউজার যখন ট্যাপ থামাবে তখন ডাটাবেসে সেই ট্যাপ আর এনার্জি সেভ করবে।"""
     try:
-        # ডাটাবেসে সেভ করা
-        await update_user_balance(user_id, data.taps, data.energy)
-        return {"status": "success"}
+        await update_user_balance(data.user_id, data.taps, data.energy)
+        return {"status": "success", "message": "Data synced successfully!"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        return JSONResponse(status_code=500, content={"status": "error", "message": str(e)})
 
-# সার্ভার রান করার কমান্ড (লোকাল টেস্টের জন্য)
-# uvicorn main:app --reload
+# --- 🤖 Telegram Bot Integration (For Render) ---
+
+@app.on_event("startup")
+async def startup_event():
+    """রেন্ডারে সার্ভার চালু হওয়ার সাথে সাথে টেলিগ্রাম বটকেও ব্যাকগ্রাউন্ডে চালু করবে।"""
+    logging.info("--- Starting Aura Coin API & Bot ---")
+    
+    # বটকে আলাদা একটি ব্যাকগ্রাউন্ড টাস্ক হিসেবে রান করানো
+    # এতে গেমের ওয়েবসাইট আর বট একই সাথে চলবে
+    asyncio.create_task(run_telegram_bot())
+
+async def run_telegram_bot():
+    try:
+        # bot.py এর মেইন ফাংশনটি কল করা
+        # এটি যেন ব্লকিং না হয় সেজন্য run_polling(drop_pending_updates=True) bot.py-তে থাকা উচিত
+        await start_bot_logic() 
+    except Exception as e:
+        logging.error(f"Bot failed to start: {e}")
+
+# রেন্ডার পোর্ট সেটআপ
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
