@@ -2,6 +2,7 @@
 const tele = window.Telegram.WebApp;
 tele.expand();
 
+// ইউজার আইডি সংগ্রহ (টেলিগ্রাম থেকে না পেলে ডামি আইডি ব্যবহার করবে)
 const userId = tele.initDataUnsafe?.user?.id || 12345678;
 const username = tele.initDataUnsafe?.user?.username || "Aura_Player";
 
@@ -11,67 +12,76 @@ let energy = 1000;
 let maxEnergy = 1000;
 let userLevel = 1;
 let tapsToSync = 0;
+let isSyncing = false; // ডুপ্লিকেট সিঙ্ক রোধ করতে
 
 // ৩. DOM এলিমেন্ট সিলেকশন
 const balanceEl = document.getElementById('balance');
 const energyEl = document.getElementById('energy');
 const energyBar = document.getElementById('energy-bar');
 const coin = document.getElementById('coin');
-const levelEl = document.getElementById('user-level'); // HTML এ এই আইডিটা থাকতে হবে
-const tapValueEl = document.getElementById('tap-value'); // HTML এ এই আইডিটা থাকতে হবে
+const levelEl = document.getElementById('user-level');
+const tapValueEl = document.getElementById('tap-value');
 
-// ৪. ট্যাব নেভিগেশন লজিক
+// ৪. ট্যাব নেভিগেশন (Stats বদলে Leaderboard করা হয়েছে)
 function showSection(sectionId) {
-    // সব সেকশন হাইড করা
     document.querySelectorAll('.game-section').forEach(s => s.style.display = 'none');
-    // টার্গেট সেকশন শো করা
     document.getElementById(sectionId).style.display = 'flex';
     
-    // যদি লিডারবোর্ড বা টাস্ক সেকশন হয়, তবে ডাটা ফেচ করা
+    // সেকশন অনুযায়ী ডাটা লোড
     if (sectionId === 'stats-section') fetchLeaderboard();
     if (sectionId === 'tasks-section') fetchTasks();
+    
+    // ভাইব্রেশন ফিডব্যাক
+    if (tele.HapticFeedback) tele.HapticFeedback.impactOccurred('light');
 }
 
-// ৫. ডাটাবেস থেকে ইউজারের তথ্য আনা
+// ৫. ডাটাবেস থেকে ইউজারের তথ্য আনা (সবচেয়ে গুরুত্বপূর্ণ)
 async function fetchUserData() {
     try {
         const response = await fetch(`/api/user/${userId}`);
         const data = await response.json();
-        if (data.status === "success" || data.user_id) {
+        
+        if (data.status === "success" || data.balance !== undefined) {
             balance = data.balance;
             energy = data.energy;
             maxEnergy = data.max_energy;
             userLevel = data.level || 1;
             updateUI();
+            console.log("User Data Loaded:", data);
         }
     } catch (err) {
-        console.error("Fetch User Error:", err);
+        console.error("User Fetch Error:", err);
     }
 }
 
 // ৬. UI আপডেট করা
 function updateUI() {
-    balanceEl.innerText = Math.floor(balance).toLocaleString();
-    energyEl.innerText = energy;
+    if (balanceEl) balanceEl.innerText = Math.floor(balance).toLocaleString();
+    if (energyEl) energyEl.innerText = energy;
     if (levelEl) levelEl.innerText = `Level ${userLevel}`;
     if (tapValueEl) tapValueEl.innerText = `+${userLevel} / Tap`;
     
     const energyPercent = (energy / maxEnergy) * 100;
-    energyBar.style.width = `${energyPercent}%`;
+    if (energyBar) energyBar.style.width = `${energyPercent}%`;
 }
 
-// ৭. কয়েন ট্যাপ ইভেন্ট (লেভেল অনুযায়ী পয়েন্ট বাড়বে)
+// ৭. কয়েন ট্যাপ ইভেন্ট
 coin.addEventListener('click', (e) => {
     if (energy >= userLevel) {
-        // লজিক: ১ লেভেলে ১ পয়েন্ট, ২ লেভেলে ২ পয়েন্ট...
+        // লেভেল অনুযায়ী ব্যালেন্স বাড়ানো
         balance += userLevel;
         energy -= userLevel;
-        tapsToSync += 1; // এটা সার্ভারে ১টা রিকোয়েস্ট হিসেবে যাবে
+        tapsToSync += 1; // এটা সার্ভারে ট্যাপের সংখ্যা পাঠাবে
         
         updateUI();
-        if (tele.HapticFeedback) tele.HapticFeedback.impactOccurred('light');
+        
+        // ভাইব্রেশন ইফেক্ট
+        if (tele.HapticFeedback) tele.HapticFeedback.impactOccurred('medium');
+        
+        // ট্যাপ অ্যানিমেশন
         createClickAnimation(e, `+${userLevel}`);
     } else {
+        // এনার্জি না থাকলে কয়েন কাঁপবে
         coin.classList.add('no-energy');
         setTimeout(() => coin.classList.remove('no-energy'), 300);
     }
@@ -81,16 +91,47 @@ function createClickAnimation(e, text) {
     const anim = document.createElement('div');
     anim.innerText = text;
     anim.className = 'click-animation';
+    // মাউস বা ট্যাপের পজিশন অনুযায়ী অ্যানিমেশন
     anim.style.left = `${e.clientX}px`;
     anim.style.top = `${e.clientY}px`;
     document.body.appendChild(anim);
     setTimeout(() => anim.remove(), 800);
 }
 
-// ৮. লিডারবোর্ড (র‍্যাঙ্ক) ফেচ করা
+// ৮. কয়েন সেভ করা (Sync Logic) - এটা এখন আরও মজবুত
+async function syncData() {
+    if (tapsToSync > 0 && !isSyncing) {
+        isSyncing = true;
+        const currentTaps = tapsToSync; // ব্যাকআপ রাখা
+        
+        try {
+            const response = await fetch('/api/sync', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId,
+                    taps: currentTaps,
+                    energy: energy
+                })
+            });
+            
+            const result = await response.json();
+            if (result.status === "success") {
+                tapsToSync -= currentTaps; // সফল হলে ট্যাপ কাউন্ট কমানো
+                console.log("Coins Synced Successfully!");
+            }
+        } catch (err) {
+            console.error("Sync Failed:", err);
+        } finally {
+            isSyncing = false;
+        }
+    }
+}
+
+// ৯. লিডারবোর্ড সিস্টেম
 async function fetchLeaderboard() {
     const listEl = document.getElementById('leaderboard-list');
-    listEl.innerHTML = "<li>Loading Ranks...</li>";
+    listEl.innerHTML = "<li style='justify-content:center;'>Loading Leaderboard...</li>";
     
     try {
         const response = await fetch(`/api/leaderboard?user_id=${userId}`);
@@ -102,19 +143,21 @@ async function fetchLeaderboard() {
             li.innerHTML = `
                 <span class="rank">#${user.rank}</span>
                 <span class="name">${user.username}</span>
-                <span class="pts">${user.balance.toLocaleString()} $AURA</span>
+                <span class="pts">${user.balance.toLocaleString()}</span>
             `;
+            // নিজের আইডি হলে হাইলাইট করা
             if (user.username === username) li.classList.add('me');
             listEl.appendChild(li);
         });
         
-        document.getElementById('my-rank').innerText = `Your Rank: #${data.user_rank}`;
+        const myRankEl = document.getElementById('my-rank');
+        if (myRankEl) myRankEl.innerText = `Your Position: #${data.user_rank}`;
     } catch (err) {
-        listEl.innerHTML = "<li>Failed to load leaderboard.</li>";
+        listEl.innerHTML = "<li>Error loading rankings.</li>";
     }
 }
 
-// ৯. টাস্ক সিস্টেম
+// ১০. টাস্ক সিস্টেম
 async function fetchTasks() {
     const taskList = document.getElementById('task-list');
     try {
@@ -127,32 +170,34 @@ async function fetchTasks() {
             div.className = 'task-item';
             div.innerHTML = `
                 <span>${task.icon} ${task.title} (+${task.reward})</span>
-                <button onclick="claimTask('${task.id}', '${task.link}')">Go</button>
+                <button onclick="claimTask('${task.id}', '${task.link}')">Join</button>
             `;
             taskList.appendChild(div);
         });
-    } catch (err) { console.log(err); }
+    } catch (err) { console.log("Task Error:", err); }
 }
 
 async function claimTask(taskId, link) {
     window.open(link, '_blank');
-    // ৫ সেকেন্ড পর ক্লেইম রিকোয়েস্ট পাঠানো
+    // ৫ সেকেন্ড পর রিওয়ার্ড চেক
     setTimeout(async () => {
-        const res = await fetch('/api/task/claim', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({user_id: userId, task_id: taskId})
-        });
-        const data = await res.json();
-        if (data.status === "success") {
-            balance += data.reward;
-            updateUI();
-            alert(`Claimed ${data.reward} $AURA!`);
-        }
+        try {
+            const res = await fetch('/api/task/claim', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({user_id: userId, task_id: taskId})
+            });
+            const data = await res.json();
+            if (data.status === "success") {
+                balance += data.reward;
+                updateUI();
+                alert(`Reward Claimed: ${data.reward} $AURA!`);
+            }
+        } catch (err) { console.log(err); }
     }, 5000);
 }
 
-// ১০. লেভেল বুস্ট / আপগ্রেড
+// ১১. লেভেল আপগ্রেড
 async function upgradeLevel() {
     try {
         const res = await fetch('/api/upgrade', {
@@ -161,44 +206,29 @@ async function upgradeLevel() {
             body: JSON.stringify({user_id: userId})
         });
         const data = await res.json();
+        
         if (data.status === "success") {
             userLevel = data.new_level;
             balance -= data.cost;
             updateUI();
-            alert(`Upgraded to Level ${userLevel}!`);
+            alert(`Boom! You are now Level ${userLevel}`);
         } else {
-            alert(data.message);
+            alert("Not enough $AURA!");
         }
-    } catch (err) { console.log(err); }
+    } catch (err) { console.log("Upgrade Error:", err); }
 }
 
-// ১১. ডাটা সিঙ্ক (প্রতি ৩ সেকেন্ডে)
-async function syncData() {
-    if (tapsToSync > 0) {
-        try {
-            await fetch('/api/sync', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_id: userId,
-                    taps: tapsToSync,
-                    energy: energy
-                })
-            });
-            tapsToSync = 0;
-        } catch (err) { console.error("Sync Error:", err); }
-    }
-}
-
-// ইন্টারভাল সেটআপ
+// ১২. টাইম-বেসড ইন্টারভালস
+// এনার্জি রিফিল (প্রতি সেকেন্ডে ৩ করে)
 setInterval(() => {
     if (energy < maxEnergy) {
-        energy += 3; // রিফিল স্পিড
+        energy = Math.min(maxEnergy, energy + 3);
         updateUI();
     }
 }, 1000);
 
+// ডাটা সিঙ্ক (প্রতি ৩ সেকেন্ডে সার্ভারে ডাটা পাঠাবে)
 setInterval(syncData, 3000);
 
-// ইনিশিয়াল লোড
+// শুরুতে সব ডাটা লোড করা
 fetchUserData();
