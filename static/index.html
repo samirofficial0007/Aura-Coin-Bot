@@ -13,24 +13,60 @@
 </head>
 <body>
 
-    <div class="header">
+    <div class="main-header">
         <div id="balance">0</div>
         <div class="currency-name">$AURA</div>
     </div>
 
-    <div class="coin-container">
-        <div id="coin"></div>
+    <div id="game-section" class="game-section">
+        <div class="user-info">
+            <span id="user-level">Level 1</span>
+            <span id="tap-value">+1 / Tap</span>
+        </div>
+        
+        <div class="coin-container">
+            <div id="coin"></div>
+        </div>
+
+        <div class="footer">
+            <div class="energy-info">
+                <span>⚡ Energy</span>
+                <span><span id="energy">1000</span> / 1000</span>
+            </div>
+            <div class="energy-bar-container">
+                <div id="energy-bar"></div>
+            </div>
+        </div>
     </div>
 
-    <div class="footer">
-        <div class="energy-info">
-            <span>⚡ Energy</span>
-            <span><span id="energy">1000</span> / 1000</span>
-        </div>
-        <div class="energy-bar-container">
-            <div id="energy-bar"></div>
+    <div id="stats-section" class="game-section" style="display: none;">
+        <h2>🏆 Leaderboard</h2>
+        <p id="my-rank" class="highlight">Calculating your rank...</p>
+        <ul id="leaderboard-list">
+            </ul>
+    </div>
+
+    <div id="tasks-section" class="game-section" style="display: none;">
+        <h2>📋 Daily Tasks</h2>
+        <div id="task-list">
+            </div>
+    </div>
+
+    <div id="boost-section" class="game-section" style="display: none;">
+        <h2>🚀 Boost Your Power</h2>
+        <div class="boost-card">
+            <h3>Multi-Tap Upgrade</h3>
+            <p>Increase your earnings per tap!</p>
+            <button onclick="upgradeLevel()" class="upgrade-btn">Upgrade Level</button>
         </div>
     </div>
+
+    <nav class="bottom-nav">
+        <button onclick="showSection('game-section')">🎮 Game</button>
+        <button onclick="showSection('tasks-section')">📋 Tasks</button>
+        <button onclick="showSection('boost-section')">🚀 Boost</button>
+        <button onclick="showSection('stats-section')">🏆 Stats</button>
+    </nav>
 
     <script src="script.js"></script>
 
