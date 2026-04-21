@@ -13,9 +13,12 @@
 </head>
 <body>
 
-    <div class="main-header">
-        <div id="balance">0</div>
-        <div class="currency-name">$AURA</div>
+    <div class="top-bar">
+        <div class="balance-container">
+            <img src="https://cdn-icons-png.flaticon.com/512/8044/8044955.png" alt="coin" class="mini-coin">
+            <div id="balance">0</div>
+            <span class="currency-tag">$AURA</span>
+        </div>
     </div>
 
     <div id="game-section" class="game-section">
@@ -29,6 +32,12 @@
         </div>
 
         <div class="footer">
+            <div class="upgrade-row">
+                <div class="upgrade-btn-mini" onclick="showSection('boost-section')">
+                    <span class="up-icon">🚀</span> Upgrade
+                </div>
+            </div>
+
             <div class="energy-info">
                 <span>⚡ Energy</span>
                 <span><span id="energy">1000</span> / 1000</span>
@@ -65,7 +74,7 @@
         <button onclick="showSection('game-section')">🎮 Game</button>
         <button onclick="showSection('tasks-section')">📋 Tasks</button>
         <button onclick="showSection('boost-section')">🚀 Boost</button>
-        <button onclick="showSection('stats-section')">🏆 Stats</button>
+        <button onclick="showSection('stats-section')">🏆 Leaderboard</button>
     </nav>
 
     <script src="script.js"></script>
