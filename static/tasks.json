@@ -1,1 +1,37 @@
-
+[
+    {
+        "id": "task_01",
+        "title": "Join Our News Channel",
+        "reward": 5000,
+        "link": "https://t.me/SamirOfficial_News",
+        "icon": "📢"
+    },
+    {
+        "id": "task_02",
+        "title": "Join Community Group",
+        "reward": 3000,
+        "link": "https://t.me/AuraCoin_Chat",
+        "icon": "👥"
+    },
+    {
+        "id": "task_03",
+        "title": "Follow us on Twitter (X)",
+        "reward": 10000,
+        "link": "https://twitter.com/AuraCoin",
+        "icon": "🐦"
+    },
+    {
+        "id": "task_04",
+        "title": "Subscribe Our YouTube",
+        "reward": 15000,
+        "link": "https://youtube.com/@SamirOfficial",
+        "icon": "🎥"
+    },
+    {
+        "id": "task_05",
+        "title": "Follow on Instagram",
+        "reward": 5000,
+        "link": "https://instagram.com/SamirOfficial",
+        "icon": "📸"
+    }
+]
