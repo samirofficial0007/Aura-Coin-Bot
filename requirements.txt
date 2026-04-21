@@ -1,4 +1,7 @@
 python-telegram-bot
 flask
+fastapi
+uvicorn
 motor
 python-dotenv
+pydantic
