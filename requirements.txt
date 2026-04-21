@@ -1,5 +1,4 @@
 python-telegram-bot
-python-dotenv
 flask
-pymongo
-dnspython
+motor
+python-dotenv
