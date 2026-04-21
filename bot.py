@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo, MenuButtonWebApp
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -9,9 +10,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 MONGO_URI = os.getenv("MONGO_URI")
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://your-app.onrender.com")
+WEBAPP_URL = os.getenv("WEBAPP_URL")
 
-# তোর অ্যাডমিন আইডি (এখান থেকেই শুধু ব্রডকাস্ট কাজ করবে)
+# তোর অ্যাডমিন আইডি
 ADMIN_ID = 7657544184 
 
 # ডাটাবেস সেটআপ
@@ -30,7 +31,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     chat_id = update.effective_chat.id
     
-    # ১. ইউজারকে ডাটাবেসে সেভ করা (ব্রডকাস্টের জন্য)
+    # ১. ইউজারকে ডাটাবেসে সেভ করা
     await users_collection.update_one(
         {"user_id": user.id},
         {"$set": {"username": user.username, "first_name": user.first_name}},
@@ -49,7 +50,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Menu Button Error: {e}")
 
-    # ৩. প্রিমিয়াম ওয়েলকাম মেসেজ
+    # ৩. প্রিমিয়াম ওয়েলকাম মেসেজ
     welcome_text = (
         f"✨ *Welcome to Aura Coin, {user.first_name}!* ✨\n"
         "━━━━━━━━━━━━━━━━━━━━\n"
@@ -66,7 +67,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # ৪. ইনলাইন বাটন
     keyboard = [
         [InlineKeyboardButton("🎮 Play Now", web_app=WebAppInfo(url=WEBAPP_URL))],
-        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/SamirOfficial_News")], # তোর চ্যানেল লিঙ্ক দিস
+        [InlineKeyboardButton("📢 Join Channel", url="https://t.me/SamirOfficial_News")],
         [InlineKeyboardButton("👥 Invite Friends", url=f"https://t.me/share/url?url=https://t.me/{(await context.bot.get_me()).username}?start={user.id}&text=Join%20Aura%20Coin%20and%20mine%20together!")]
     ]
 
@@ -76,7 +77,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown'
     )
 
-# --- অ্যাডমিন ব্রডকাস্ট কমান্ড (সব ইউজারকে মেসেজ পাঠাতে) ---
+# --- অ্যাডমিন ব্রডকাস্ট কমান্ড ---
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
         await update.message.reply_text("❌ You are not authorized!")
@@ -97,23 +98,26 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await context.bot.send_message(chat_id=user['user_id'], text=msg_text)
             count += 1
         except Exception:
-            pass # ইউজার যদি বট ব্লক করে রাখে
+            pass 
 
     await update.message.reply_text(f"✅ Successfully sent to {count} users.")
 
-# --- মেইন ফাংশন ---
-def main():
-    # বট অ্যাপ্লিকেশন তৈরি
+# --- রেন্ডার সার্ভারের জন্য ব্যাকগ্রাউন্ডে রান হওয়ার ফাংশন ---
+async def start_bot_async():
+    """এটি main.py থেকে কল হবে"""
     app = Application.builder().token(TOKEN).build()
 
-    # কমান্ড হ্যান্ডলার যোগ করা
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("broadcast", broadcast))
 
-    print("--- Aura Coin Bot is Live! ---")
-    
-    # পোলিং শুরু করা
-    app.run_polling(drop_pending_updates=True)
+    # পোলিং শুরু করা (এটি নন-ব্লকিং)
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling(drop_pending_updates=True)
+    logging.info("--- Aura Coin Bot is Live and Polling! ---")
 
+# পিসিতে সরাসরি টেস্ট করার জন্য (লোকালি)
 if __name__ == '__main__':
-    main()
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.run_polling()
